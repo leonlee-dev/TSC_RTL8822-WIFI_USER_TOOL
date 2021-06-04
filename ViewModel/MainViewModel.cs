@@ -18,7 +18,7 @@ namespace UserTool.ViewModel
     {
         public string Version { get { return "RTK User Tool v1.00d"; } }
         private readonly string adbPath = Environment.CurrentDirectory + "\\platform-tools\\adb.exe";
-        
+
         // connector
         private Adb adb;
         private ComPort comPort;
@@ -27,6 +27,7 @@ namespace UserTool.ViewModel
         private RtwProxyProcessor rtwProxyProcessor;
         private DispatcherTimer updateRxCountTimer;
         private DispatcherTimer saveLogTimer;
+        private DispatcherTimer updateComPortTimer;
         private Regex numericRegex = new Regex(@"^[0-9]+$");
         private Regex base16Regex = new Regex(@"^[0-9A-Fa-f]+$");
         private bool isTxSend = false;
@@ -36,7 +37,7 @@ namespace UserTool.ViewModel
         public IEnumerable<string> BandwidthItemsSource { get { return Wifi.bwDic.Values; } }
         public IEnumerable<string> RateIDItemsSource { get { return Wifi.rateIdDic.Values; } }
         public IEnumerable<string> AntennaItemsSource { get { return Wifi.antPathDic.Values.TakeWhile((value) => !value.Equals(Wifi.antPathDic[ANT_PATH.PATH_AB])); } }
-        public IEnumerable<string> ComPortItemsSource { get { return SerialPort.GetPortNames(); } }
+        public IEnumerable<string> ComPortItemsSource;
 
         private string strConnect = "Conn";
         public string StrConnect { get { return strConnect; } set { strConnect = value; OnPropertyChanged("StrConnect"); } }
@@ -65,12 +66,12 @@ namespace UserTool.ViewModel
             get { return isBTClosed; }
             set
             {
-                if(isInit)
+                if (isInit)
                 {
                     isBTClosed = value;
                     RtwCommand.EnableBT(isBTClosed);
                     OnPropertyChanged("IsBTClosed");
-                }          
+                }
             }
         }
 
@@ -78,7 +79,7 @@ namespace UserTool.ViewModel
         public bool IsDefaultTxPower { get { return isDefaultTxPower; } set { isDefaultTxPower = value; OnPropertyChanged("IsDefaultTxPower"); } }
 
         private bool autoRx = true;
-        public bool AutoRx { get { return autoRx; } set { if(!isRxSend) autoRx = value; OnPropertyChanged("AutoRx"); } }
+        public bool AutoRx { get { return autoRx; } set { if (!isRxSend) autoRx = value; OnPropertyChanged("AutoRx"); } }
 
         private int crystal;
         public string CrystalBase16
@@ -161,7 +162,7 @@ namespace UserTool.ViewModel
         public int RxCount { get { return rxCount; } set { rxCount = value; OnPropertyChanged("RxCount"); } }
 
         private string rtbtext;
-        public string RtbText { get { return rtbtext; } set { rtbtext = value; OnPropertyChanged("RtbText"); }}
+        public string RtbText { get { return rtbtext; } set { rtbtext = value; OnPropertyChanged("RtbText"); } }
 
         public ICommand InitCommand
         {
@@ -169,7 +170,7 @@ namespace UserTool.ViewModel
             {
                 return new CommandBase((o) =>
                 {
-                    if(!isInit)
+                    if (!isInit)
                     {
                         RtwInterfaceSetup();
                         RtwCommand.Init();
@@ -183,30 +184,33 @@ namespace UserTool.ViewModel
 
         public ICommand ConnectionCommand
         {
-            get { return new CommandBase((o) => 
+            get
             {
-                if (!isConnected)
-                {
-                    if (!ConnectDUT())
-                        return;
+                return new CommandBase((o) =>
+          {
+              if (!isConnected)
+              {
+                  if (!ConnectDUT())
+                      return;
 
-                    StrConnect = "Disconn";
-                    IsConnected = true;
-                }
-                else
-                {
-                    DisconnectDUT();
-                    StrConnect = "Conn";
-                    IsConnected = false;
-                    IsInit = false;
+                  StrConnect = "Disconn";
+                  IsConnected = true;
+              }
+              else
+              {
+                  DisconnectDUT();
+                  StrConnect = "Conn";
+                  IsConnected = false;
+                  IsInit = false;
 
-                    isTxSend = false;
-                    isRxSend = false;
-                    StrTxSend = "Tx Send";
-                    StrRxSend = "Rx Send";
-                }              
+                  isTxSend = false;
+                  isRxSend = false;
+                  StrTxSend = "Tx Send";
+                  StrRxSend = "Rx Send";
+              }
+          }
+          , () => true);
             }
-            , () => true); }
         }
 
         public ICommand CrystalInputEnter
@@ -257,7 +261,7 @@ namespace UserTool.ViewModel
 
                     TxPower = (txPower + 1).ToString();
                     ANT_PATH ANT = Wifi.antPathDic.FirstOrDefault(x => x.Value == antenna).Key;
-                    if(ANT == ANT_PATH.PATH_A)
+                    if (ANT == ANT_PATH.PATH_A)
                         rtwProxyProcessor.Send("rtwpriv wlan0 mp_txpower patha=" + txPower + ",pathb=0");
                     else if (ANT == ANT_PATH.PATH_B)
                         rtwProxyProcessor.Send("rtwpriv wlan0 mp_txpower patha=0,pathb=" + txPower);
@@ -326,6 +330,7 @@ namespace UserTool.ViewModel
                 () => true);
             }
         }
+
         public ICommand TxSendCommand
         {
             get
@@ -375,7 +380,7 @@ namespace UserTool.ViewModel
                         rtwProxyProcessor.Send("rtwpriv wlan0 mp_stop");
                         StrTxSend = "Tx Send";
                         isTxSend = false;
-                    }  
+                    }
                 },
                 () => true);
             }
@@ -406,7 +411,7 @@ namespace UserTool.ViewModel
                         StrRxSend = "Stop Rx";
                         isRxSend = true;
 
-                        if(autoRx)
+                        if (autoRx)
                             updateRxCountTimer.Start();
                     }
                     else
@@ -415,9 +420,9 @@ namespace UserTool.ViewModel
                         StrRxSend = "Rx Send";
                         isRxSend = false;
 
-                        if(updateRxCountTimer.IsEnabled)
+                        if (updateRxCountTimer.IsEnabled)
                             updateRxCountTimer.Stop();
-                    } 
+                    }
                 },
                 () => true);
             }
@@ -449,6 +454,7 @@ namespace UserTool.ViewModel
                 {
                     updateRxCountTimer.Stop();
                     saveLogTimer.Stop();
+                    updateComPortTimer.Stop();
                     //System.Windows.Application.Current.MainWindow.Close();
                 },
                 () => true);
@@ -493,7 +499,7 @@ namespace UserTool.ViewModel
             }
             else if (isComPortUsed)
             {
-                if(comPort != null)
+                if (comPort != null)
                 {
                     comPort.Close();
                     comPort = null;
@@ -542,6 +548,20 @@ namespace UserTool.ViewModel
                 }
             };
             saveLogTimer.Start();
+
+            updateComPortTimer = new DispatcherTimer();
+            updateComPortTimer.Interval = TimeSpan.FromMilliseconds(2000);
+            updateComPortTimer.Tick += (sender, args) =>
+            {
+                if (!isComPortUsed)
+                    return;
+
+                string[] comPorts = SerialPort.GetPortNames();
+                int count = comPorts.Count();
+                if (count > 0)
+                    ComPortItemsSource = comPorts;
+            };
+            updateComPortTimer.Start();
         }
 
         private void ProcessReceive(object sender, DataReceivedEventArgs e)
@@ -549,7 +569,7 @@ namespace UserTool.ViewModel
             if (string.IsNullOrEmpty(e.Data))
                 return;
 
-            if(rtwProxyProcessor != null)
+            if (rtwProxyProcessor != null)
             {
                 Console.WriteLine(e.Data);
                 rtwProxyProcessor.Receive(e.Data);
