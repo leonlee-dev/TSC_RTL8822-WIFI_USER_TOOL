@@ -13,6 +13,8 @@ using System.Windows.Media.Imaging;
 using System.Windows.Navigation;
 using System.Windows.Shapes;
 using RTKModule;
+using Unity;
+using UserTool.ViewModel;
 
 namespace UserTool
 {
@@ -21,6 +23,16 @@ namespace UserTool
     /// </summary>
     public partial class MainWindow : Window
     {
+        /*
+         * [Dependency] attribute to the property, the dependency container resolves and injects the specified type after creating the view. 
+         * The injected viewmodel is directly set to the data context of the view. The view itself contains no other logic. 
+         */
+        [Dependency]
+        public MainViewModel ViewModel
+        {
+            set { DataContext = value; }
+        }
+
         public MainWindow()
         {
             InitializeComponent();

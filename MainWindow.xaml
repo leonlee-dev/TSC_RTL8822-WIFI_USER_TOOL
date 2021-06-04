@@ -12,9 +12,9 @@
         d:DataContext="{d:DesignInstance vm:MainViewModel,IsDesignTimeCreatable=True}"
         Title="{Binding Version}" Height="450" Width="675"
         Icon="wifi.ico" ResizeMode="NoResize" Loaded="Window_Loaded">
-    <Window.DataContext>
+    <!--<Window.DataContext>
         <vm:MainViewModel/>
-    </Window.DataContext>
+    </Window.DataContext>-->
     <Window.Resources>
         <cv:InitButtonEnabledConverter x:Key="cv"></cv:InitButtonEnabledConverter>
     </Window.Resources>

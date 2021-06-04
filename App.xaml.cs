@@ -5,6 +5,8 @@ using System.Data;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Windows;
+using Unity;
+using UserTool.ViewModel;
 
 namespace UserTool
 {
@@ -13,5 +15,16 @@ namespace UserTool
     /// </summary>
     public partial class App : Application
     {
+        protected override void OnStartup(StartupEventArgs e)
+        {
+            base.OnStartup(e);
+
+            IUnityContainer container = new UnityContainer();
+            // register service
+
+            // show main dialog window 
+            MainWindow mainWindow = container.Resolve<MainWindow>();
+            mainWindow.Show(); // msut be remove 'StartupUri="MainWindow.xaml"' attribute in App.xaml
+        }
     }
 }
