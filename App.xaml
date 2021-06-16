@@ -2,8 +2,12 @@
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:local="clr-namespace:UserTool"
-             xmlns:vm="clr-namespace:UserTool.ViewModel">
+             xmlns:view="clr-namespace:UserTool.View"
+             xmlns:vm="clr-namespace:UserTool.ViewModel"
+             StartupUri="MainWindow.xaml">
     <Application.Resources>
-        
+        <DataTemplate DataType="{x:Type vm:WifiViewModel}">
+            <view:WifiView/>
+        </DataTemplate>
     </Application.Resources>
 </Application>

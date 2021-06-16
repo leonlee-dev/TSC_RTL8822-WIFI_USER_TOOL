@@ -15,6 +15,7 @@ using System.Windows.Shapes;
 using RTKModule;
 using Unity;
 using UserTool.ViewModel;
+using UserTool.View;
 
 namespace UserTool
 {
@@ -40,6 +41,11 @@ namespace UserTool
 
         private void Window_Loaded(object sender, RoutedEventArgs e)
         {
+            //Change_Page.Content = new Frame()
+            //{
+            //    Content = new WifiPageView()
+            //};
+
             //Frequency.ItemsSource = Array.ConvertAll<CH, int>(Wifi.chDic.Keys.ToArray(), delegate (CH ch) { return (int)ch; });
             //Bandwidth.ItemsSource = Wifi.bwDic.Values;
             //RateID.ItemsSource = Wifi.rateIdDic.Values;
