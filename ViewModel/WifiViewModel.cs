@@ -1,6 +1,7 @@
 ﻿using RTKModule;
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.IO;
 using System.IO.Ports;
@@ -8,6 +9,7 @@ using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
+using System.Windows;
 using System.Windows.Input;
 using System.Windows.Threading;
 using UserTool.Utility;
@@ -17,6 +19,7 @@ namespace UserTool.ViewModel
     public class WifiViewModel : ViewModelBase
     {
         private readonly string adbPath = Environment.CurrentDirectory + "\\platform-tools\\adb.exe";
+        private readonly string configPath = Environment.CurrentDirectory + "\\config.txt";
 
         // connector
         private Adb adb;
@@ -32,11 +35,24 @@ namespace UserTool.ViewModel
         private bool isTxSend = false;
         private bool isRxSend = false;
 
+        //RtwCommand.Init("8822cs.ko", "/vendor/lib/modules/");
+        //RtwCommand.Init("88x2cs.ko", "/lib/modules/4.9.241-BPI-M5/kernel/drivers/net/wireless/realtek/rtl8822cs/");
+        private bool enablePowerLimitTable = false;
+        private bool enablePowerByRateTable = false;
+        private string drivFile = "8822cs.ko";
+        private string drivDir = "/vendor/lib/modules/";
+        private const int BAUDRATE = 115200;
+
+        private RtwCommand rtwCommand;
+
         public IEnumerable<int> FrequencyItemsSource { get { return Array.ConvertAll<CH, int>(Wifi.chDic.Keys.ToArray(), delegate (CH ch) { return (int)ch; }); } }
         public IEnumerable<string> BandwidthItemsSource { get { return Wifi.bwDic.Values; } }
         public IEnumerable<string> RateIDItemsSource { get { return Wifi.rateIdDic.Values; } }
-        public IEnumerable<string> AntennaItemsSource { get { return Wifi.antPathDic.Values.TakeWhile((value) => !value.Equals(Wifi.antPathDic[ANT_PATH.PATH_AB])); } }
-        public IEnumerable<string> ComPortItemsSource;
+        public IEnumerable<string> TxModeItemsSource { get { return Wifi.txModeDic.Values; } }
+        public ObservableCollection<string> AntennaItemsSource { get; set; } = new ObservableCollection<string>(); // bound by address, so can't new one
+
+        public IEnumerable<string> comPortItemsSource;
+        public IEnumerable<string> ComPortItemsSource { get { return comPortItemsSource; } set { comPortItemsSource = value; OnPropertyChanged("ComPortItemsSource"); } }
 
         private string strConnect = "Conn";
         public string StrConnect { get { return strConnect; } set { strConnect = value; OnPropertyChanged("StrConnect"); } }
@@ -65,11 +81,36 @@ namespace UserTool.ViewModel
             get { return isBTClosed; }
             set
             {
+                //if (isInit)
+                //{
+                //    isBTClosed = value;
+                //    Task.Run(() =>
+                //    {
+                //        rtwCommand.EnableBT(isBTClosed);
+                //    });
+
+                //    OnPropertyChanged("IsBTClosed");
+                //}
+            }
+        }
+
+        private bool isEnablePowerTracking = false;
+        public bool IsEnablePowerTracking
+        {
+            get { return isEnablePowerTracking; }
+            set
+            {
                 if (isInit)
                 {
-                    isBTClosed = value;
-                    RtwCommand.EnableBT(isBTClosed);
-                    OnPropertyChanged("IsBTClosed");
+                    isEnablePowerTracking = value;
+                    Task.Run(() =>
+                    {
+                        if (isEnablePowerTracking)
+                            rtwCommand.WifiPowerTracking(1);
+                        else
+                            rtwCommand.WifiPowerTracking(0);
+                    });
+                    OnPropertyChanged("IsEnablePowerTracking");
                 }
             }
         }
@@ -86,13 +127,12 @@ namespace UserTool.ViewModel
             get { return crystal != 0 ? crystal.ToString("x2") : ""; }
             set
             {
-                string strCrystal = value;
                 if (string.IsNullOrEmpty(value))
-                    strCrystal = "0";
+                    value = "0";
 
-                if (base16Regex.IsMatch(strCrystal))
+                if (base16Regex.IsMatch(value))
                 {
-                    int v = Convert.ToInt32(strCrystal, 16);
+                    int v = Convert.ToInt32(value, 16);
                     if (v >= 0 && v <= 0x7f)
                     {
                         crystal = v;
@@ -109,49 +149,141 @@ namespace UserTool.ViewModel
         public string BandWidth { get { return bandWidth; } set { bandWidth = value; OnPropertyChanged("BandWidth"); } }
 
         private string rateId;
-        public string RateID { get { return rateId; } set { rateId = value; OnPropertyChanged("RateID"); } }
+        public string RateID
+        {
+            get { return rateId; }
+            set
+            {
+                if (rateId == value)
+                    return;
+
+                rateId = value;
+                RATE_ID rate = Wifi.rateIdDic.FirstOrDefault(x => x.Value == rateId).Key;
+                if (rate >= RATE_ID.VHT2MCS0 && rate <= RATE_ID.VHT2MCS9)
+                {
+                    //System.Runtime.InteropServices.GCHandle handle = System.Runtime.InteropServices.GCHandle.Alloc(AntennaItemsSource, System.Runtime.InteropServices.GCHandleType.WeakTrackResurrection);
+                    //int address = System.Runtime.InteropServices.GCHandle.ToIntPtr(handle).ToInt32();
+                    //Console.WriteLine("A" + address);
+                    //handle = System.Runtime.InteropServices.GCHandle.Alloc(antennaItemsSource, System.Runtime.InteropServices.GCHandleType.WeakTrackResurrection);
+                    //address = System.Runtime.InteropServices.GCHandle.ToIntPtr(handle).ToInt32();
+                    //Console.WriteLine("a" + address);
+                    AntennaItemsSource.Clear();
+                    AntennaItemsSource.Add(Wifi.antPathDic[ANT_PATH.PATH_AB]);
+                    Antenna = Wifi.antPathDic[ANT_PATH.PATH_AB];
+                }
+                else
+                {
+                    AntennaItemsSource.Clear();
+                    AntennaItemsSource.Add(Wifi.antPathDic[ANT_PATH.PATH_A]);
+                    AntennaItemsSource.Add(Wifi.antPathDic[ANT_PATH.PATH_B]);
+                    Antenna = Wifi.antPathDic[ANT_PATH.PATH_A];
+                }
+                OnPropertyChanged("RateID");
+            }
+        }
 
         private string antenna;
         public string Antenna { get { return antenna; } set { antenna = value; OnPropertyChanged("Antenna"); } }
 
+        private string txMode;
+        public string TxMode { get { return txMode; } set { txMode = value; OnPropertyChanged("TxMode"); } }
+
         private string comNum;
         public string ComNum { get { return comNum; } set { comNum = value; OnPropertyChanged("ComNum"); } }
 
-        private string txPowerBase16;
-        public string TxPowerBase16
+        private int txCount = 0;
+        public string TxCount
         {
             get
             {
-                return txPowerBase16;
+                return txCount != 0 ? txCount.ToString() : "";
             }
             set
             {
-                txPowerBase16 = value;
-                OnPropertyChanged("TxPowerBase16");
+                if (string.IsNullOrEmpty(value))
+                    value = "0";
+
+                if (numericRegex.IsMatch(value))
+                {
+                    txCount = Convert.ToInt32(value);
+                    OnPropertyChanged("TxCount");
+                }
             }
         }
 
-        private int txPower;
-        public string TxPower
+        private string txPower0Base16;
+        public string TxPower0Base16
         {
             get
             {
-                return txPower != 0 ? txPower.ToString() : "";
+                return txPower0Base16;
             }
             set
             {
-                string strTxPower = value;
-                if (string.IsNullOrEmpty(value))
-                    strTxPower = "0";
+                txPower0Base16 = value;
+                OnPropertyChanged("TxPower0Base16");
+            }
+        }
 
-                if (numericRegex.IsMatch(strTxPower))
+        private string txPower1Base16;
+        public string TxPower1Base16
+        {
+            get
+            {
+                return txPower1Base16;
+            }
+            set
+            {
+                txPower1Base16 = value;
+                OnPropertyChanged("TxPower1Base16");
+            }
+        }
+
+        private int txPower0;
+        public string TxPower0
+        {
+            get
+            {
+                return txPower0 != 0 ? txPower0.ToString() : "";
+            }
+            set
+            {
+                if (string.IsNullOrEmpty(value))
+                    value = "0";
+
+                if (numericRegex.IsMatch(value))
                 {
-                    int v = Convert.ToInt32(strTxPower);
+                    int v = Convert.ToInt32(value);
                     if (v >= 0 && v <= 0x7f)
                     {
-                        txPower = v;
-                        TxPowerBase16 = "0x" + v.ToString("x2");
-                        OnPropertyChanged("TxPower");
+                        txPower0 = v;
+                        TxPower0Base16 = "0x" + v.ToString("x2");
+                        OnPropertyChanged("TxPower0");
+                    }
+                }
+            }
+        }
+
+        private int txPower1;
+        public string TxPower1
+        {
+            get
+            {
+                return txPower1 != 0 ? txPower1.ToString() : "";
+            }
+            set
+            {
+                if (string.IsNullOrEmpty(value))
+                    value = "0";
+
+                if (numericRegex.IsMatch(value))
+                {
+                    int v = Convert.ToInt32(value);
+                    if (v >= 0 && v <= 0x7f)
+                    {
+                        txPower1 = v;
+                        TxPower1Base16 = "0x" + v.ToString("x2");
+                        OnPropertyChanged("TxPower1");
                     }
                 }
             }
@@ -163,6 +295,42 @@ namespace UserTool.ViewModel
         private string rtbtext;
         public string RtbText { get { return rtbtext; } set { rtbtext = value; OnPropertyChanged("RtbText"); } }
 
+        public ICommand ReadWLCommand
+        {
+            get
+            {
+                return new CommandBase((o) =>
+                {
+                    Task.Run(() =>
+                    {
+                        if (isInit)
+                        {
+                            rtwCommand.ReadFromWLEfuse();
+                        }
+                    });
+                },
+                () => true);
+            }
+        }
+
+        public ICommand ReadBTCommand
+        {
+            get
+            {
+                return new CommandBase((o) =>
+                {
+                    Task.Run(() =>
+                    {
+                        if (isInit)
+                        {
+                            rtwCommand.ReadFromBTEfuse();
+                        }
+                    });
+                },
+                () => true);
+            }
+        }
+
         public ICommand InitCommand
         {
             get
@@ -172,7 +340,10 @@ namespace UserTool.ViewModel
                     if (!isInit)
                     {
                         RtwInterfaceSetup();
-                        RtwCommand.Init();
+                        Task.Run(() =>
+                        {
+                            rtwCommand.Init(drivFile, drivDir, enablePowerLimitTable, enablePowerByRateTable);
+                        });
                         IsInit = true;
                         IsBTClosed = true;
                     }
@@ -236,11 +407,8 @@ namespace UserTool.ViewModel
                     if (!isInit)
                         return;
 
-                    ANT_PATH ANT = Wifi.antPathDic.FirstOrDefault(x => x.Value == antenna).Key;
-                    if (ANT == ANT_PATH.PATH_A)
-                        rtwProxyProcessor.Send("rtwpriv wlan0 mp_txpower patha=" + txPower + ",pathb=0");
-                    else if (ANT == ANT_PATH.PATH_B)
-                        rtwProxyProcessor.Send("rtwpriv wlan0 mp_txpower patha=0,pathb=" + txPower);
+                    //ANT_PATH ANT = Wifi.antPathDic.FirstOrDefault(x => x.Value == antenna).Key;
+                    rtwProxyProcessor.Send("rtwpriv wlan0 mp_txpower patha=" + txPower0 + ",pathb=" + txPower1);
                 },
                 () => true);
             }
@@ -258,13 +426,12 @@ namespace UserTool.ViewModel
                     if (isRxSend)
                         return;
 
-                    TxPower = (txPower + 1).ToString();
-                    ANT_PATH ANT = Wifi.antPathDic.FirstOrDefault(x => x.Value == antenna).Key;
-                    if (ANT == ANT_PATH.PATH_A)
-                        rtwProxyProcessor.Send("rtwpriv wlan0 mp_txpower patha=" + txPower + ",pathb=0");
-                    else if (ANT == ANT_PATH.PATH_B)
-                        rtwProxyProcessor.Send("rtwpriv wlan0 mp_txpower patha=0,pathb=" + txPower);
-                    //RtwCommand.SendTxPowerCommand(ANT, (byte)txPower);
+                    int tx = int.Parse(o as string);
+                    if (tx == 0)
+                        TxPower0 = (txPower0 + 1).ToString();
+                    else if (tx == 1)
+                        TxPower1 = (txPower1 + 1).ToString();
+                    rtwProxyProcessor.Send("rtwpriv wlan0 mp_txpower patha=" + txPower0 + ",pathb=" + txPower1);
                 },
                 () => true);
             }
@@ -282,12 +449,12 @@ namespace UserTool.ViewModel
                     if (isRxSend)
                         return;
 
-                    TxPower = (txPower - 1).ToString();
-                    ANT_PATH ANT = Wifi.antPathDic.FirstOrDefault(x => x.Value == antenna).Key;
-                    if (ANT == ANT_PATH.PATH_A)
-                        rtwProxyProcessor.Send("rtwpriv wlan0 mp_txpower patha=" + txPower + ",pathb=0");
-                    else if (ANT == ANT_PATH.PATH_B)
-                        rtwProxyProcessor.Send("rtwpriv wlan0 mp_txpower patha=0,pathb=" + txPower);
+                    int tx = int.Parse(o as string);
+                    if (tx == 0)
+                        TxPower0 = (txPower0 - 1).ToString();
+                    else if (tx == 1)
+                        TxPower1 = (txPower1 - 1).ToString();
+                    rtwProxyProcessor.Send("rtwpriv wlan0 mp_txpower patha=" + txPower0 + ",pathb=" + txPower1);
                 },
                 () => true);
             }
@@ -306,7 +473,7 @@ namespace UserTool.ViewModel
                         return;
 
                     RxCount = 0;
-                    RtwCommand.ResetRxStat();
+                    rtwCommand.ResetRxStat();
                 },
                 () => true);
             }
@@ -324,7 +491,7 @@ namespace UserTool.ViewModel
                     if (!isRxSend)
                         return;
 
-                    RxCount = RtwCommand.GetRxPacketCount();
+                    RxCount = rtwCommand.GetRxPacketCount();
                 },
                 () => true);
             }
@@ -334,7 +501,7 @@ namespace UserTool.ViewModel
         {
             get
             {
-                return new CommandBase((o) =>
+                return new CommandBase(async (o) =>
                 {
                     if (!isInit)
                         return;
@@ -346,30 +513,62 @@ namespace UserTool.ViewModel
                     {
                         BW BW = Wifi.bwDic.FirstOrDefault(x => x.Value == bandWidth).Key;
                         ANT_PATH ANT = Wifi.antPathDic.FirstOrDefault(x => x.Value == antenna).Key;
+                        TX_MODE TXMODE = Wifi.txModeDic.FirstOrDefault(x => x.Value == txMode).Key;
 
-                        rtwProxyProcessor.Send("rtwpriv wlan0 mp_start");
-                        rtwProxyProcessor.Send("rtwpriv wlan0 mp_channel " + Wifi.ChannelMapping(frequency));
-                        rtwProxyProcessor.Send("rtwpriv wlan0 mp_bandwidth 40M=" + (int)BW + ",shortGI=0");
-                        rtwProxyProcessor.Send("rtwpriv wlan0 mp_rate " + rateId);
-                        rtwProxyProcessor.Send("rtwpriv wlan0 mp_ant_tx " + antenna);
-                        rtwProxyProcessor.Send("rtwpriv wlan0 mp_phypara xcap=" + crystal);
-                        if (isDefaultTxPower)
+                        await Task.Run(() =>
                         {
-                            int[] txPower = RtwCommand.GetTxPower(ANT);
-                            if (ANT == ANT_PATH.PATH_A)
-                                rtwProxyProcessor.Send("rtwpriv wlan0 mp_txpower patha=" + txPower[0] + ",pathb=0");
-                            else if (ANT == ANT_PATH.PATH_B)
-                                rtwProxyProcessor.Send("rtwpriv wlan0 mp_txpower patha=0,pathb=" + txPower[0]);
-                            TxPower = txPower[0].ToString();
-                        }
-                        else
-                        {
-                            if (ANT == ANT_PATH.PATH_A)
-                                rtwProxyProcessor.Send("rtwpriv wlan0 mp_txpower patha=" + txPower + ",pathb=0");
-                            else if (ANT == ANT_PATH.PATH_B)
-                                rtwProxyProcessor.Send("rtwpriv wlan0 mp_txpower patha=0,pathb=" + txPower);
-                        }
-                        rtwProxyProcessor.Send("rtwpriv wlan0 mp_ctx background,pkt");
+                            rtwProxyProcessor.Send("rtwpriv wlan0 mp_start", 1000);
+                            rtwProxyProcessor.Send("rtwpriv wlan0 mp_channel " + Wifi.ChannelMapping(frequency), 1000);
+                            rtwProxyProcessor.Send("rtwpriv wlan0 mp_bandwidth 40M=" + (int)BW + ",shortGI=0", 1000);
+                            rtwProxyProcessor.Send("rtwpriv wlan0 mp_rate " + rateId, 1000);
+                            rtwProxyProcessor.Send("rtwpriv wlan0 mp_ant_tx " + antenna, 1000);
+                            rtwProxyProcessor.Send("rtwpriv wlan0 mp_phypara xcap=" + crystal, 1000);
+                            if (isDefaultTxPower)
+                            {
+                                int[] txPower = rtwCommand.GetTxPower(ANT);
+                                if (ANT == ANT_PATH.PATH_A)
+                                {
+                                    TxPower0 = txPower[0].ToString();
+                                }
+                                else if (ANT == ANT_PATH.PATH_B)
+                                {
+                                    TxPower1 = txPower[0].ToString();
+                                }
+                                else if (ANT == ANT_PATH.PATH_AB)
+                                {
+                                    TxPower0 = txPower[0].ToString();
+                                    TxPower1 = txPower[1].ToString();
+                                }
+                                rtwProxyProcessor.Send("rtwpriv wlan0 mp_txpower patha=" + txPower0 + ",pathb=" + txPower1, 1000);
+                            }
+                            else
+                            {
+                                rtwProxyProcessor.Send("rtwpriv wlan0 mp_txpower patha=" + txPower0 + ",pathb=" + txPower1, 1000);
+                            }
+
+                            if (isEnablePowerTracking)
+                                rtwCommand.WifiPowerTracking(1);
+
+                            switch (TXMODE)
+                            {
+                                case TX_MODE.PACKET_TX:
+                                    if (txCount != 0)
+                                        rtwProxyProcessor.Send("rtwpriv wlan0 mp_ctx count=" + txCount + ",pkt", 1000);
+                                    else
+                                        rtwProxyProcessor.Send("rtwpriv wlan0 mp_ctx background,pkt", 1000);
+                                    break;
+                                case TX_MODE.CONTINUOUS_TX:
+                                    rtwProxyProcessor.Send("rtwpriv wlan0 mp_ctx background");
+                                    break;
+                                case TX_MODE.CARRIER_SUPPRESION:
+                                    rtwProxyProcessor.Send("rtwpriv wlan0 mp_ctx background,cs");
+                                    break;
+                                case TX_MODE.SINGLE_TONE_TX:
+                                    rtwProxyProcessor.Send("rtwpriv wlan0 mp_ctx background,stone");
+                                    break;
+                            }
+                        });
+
                         StrTxSend = "Stop Tx";
                         isTxSend = true;
                     }
@@ -389,7 +588,7 @@ namespace UserTool.ViewModel
         {
             get
             {
-                return new CommandBase((o) =>
+                return new CommandBase(async (o) =>
                 {
                     if (!isInit)
                         return;
@@ -401,12 +600,17 @@ namespace UserTool.ViewModel
                     {
                         BW BW = Wifi.bwDic.FirstOrDefault(x => x.Value == bandWidth).Key;
 
-                        rtwProxyProcessor.Send("rtwpriv wlan0 mp_start");
-                        rtwProxyProcessor.Send("rtwpriv wlan0 mp_channel " + Wifi.ChannelMapping(frequency));
-                        rtwProxyProcessor.Send("rtwpriv wlan0 mp_ant_rx " + antenna);
-                        rtwProxyProcessor.Send("rtwpriv wlan0 mp_bandwidth 40M=" + (int)BW + ",shortGI=0");
-                        rtwProxyProcessor.Send("rtwpriv wlan0 mp_arx start");
-                        rtwProxyProcessor.Send("rtwpriv wlan0 mp_reset_stats");
+                        await Task.Run(() =>
+                        {
+                            rtwProxyProcessor.Send("rtwpriv wlan0 mp_start", 100);
+                            rtwProxyProcessor.Send("rtwpriv wlan0 mp_channel " + Wifi.ChannelMapping(frequency), 100);
+                            rtwProxyProcessor.Send("rtwpriv wlan0 mp_ant_rx " + antenna, 100);
+                            rtwProxyProcessor.Send("rtwpriv wlan0 mp_bandwidth 40M=" + (int)BW + ",shortGI=0", 100);
+                            rtwProxyProcessor.Send("rtwpriv wlan0 mp_arx start", 100);
+                            rtwProxyProcessor.Send("rtwpriv wlan0 mp_reset_stats", 100);
+                        });
+
+                        RxCount = 0;
                         StrRxSend = "Stop Rx";
                         isRxSend = true;
 
@@ -433,13 +637,32 @@ namespace UserTool.ViewModel
             {
                 return new CommandBase((o) =>
                 {
+                    AntennaItemsSource.Add(Wifi.antPathDic[ANT_PATH.PATH_A]);
+                    AntennaItemsSource.Add(Wifi.antPathDic[ANT_PATH.PATH_B]);
+
                     // default value
                     Frequency = (int)CH.CH14;
                     BandWidth = Wifi.bwDic[BW.B_20MHZ];
                     RateID = Wifi.rateIdDic[RATE_ID.R_54M];
                     Antenna = Wifi.antPathDic[ANT_PATH.PATH_B];
+                    TxMode = Wifi.txModeDic[TX_MODE.PACKET_TX];
                     CrystalBase16 = "50"; // base 16
-                    TxPower = "80"; // base 10
+                    TxPower0 = "80"; // base 10
+                    TxPower1 = "80"; // base 10
+
+                    try
+                    {
+                        // load config
+                        string[] lines = File.ReadAllLines(configPath);
+                        enablePowerLimitTable = lines.Select(line => line.StartsWith("POWER_LIMIT_TABLE") ? line : "").SkipWhile(content => string.IsNullOrEmpty(content)).First().Split('=')[1].Trim() == "0" ? false : true;
+                        enablePowerByRateTable = lines.Select(line => line.StartsWith("POWER_BY_RATE_TABLE") ? line : "").SkipWhile(content => string.IsNullOrEmpty(content)).First().Split('=')[1].Trim() == "0" ? false : true;
+                        drivFile = lines.Select(line => line.StartsWith("KO_FILE") ? line : "").SkipWhile(content => string.IsNullOrEmpty(content)).First().Split('=')[1];
+                        drivDir = lines.Select(line => line.StartsWith("KO_DIR") ? line : "").SkipWhile(content => string.IsNullOrEmpty(content)).First().Split('=')[1];
+                    }
+                    catch (Exception ex)
+                    {
+                        MessageBox.Show(ex.Message);
+                    }
                 },
                 () => true);
             }
@@ -478,7 +701,7 @@ namespace UserTool.ViewModel
                 if (string.IsNullOrEmpty(comNum))
                     return false;
 
-                comPort = new ComPort(comNum, 460800, 8, StopBits.One, Parity.None);
+                comPort = new ComPort(comNum, BAUDRATE, 8, StopBits.One, Parity.None);
                 comPort.ReceiveSerialMessageEvent += ProcessSerialReceive;
                 comPort.Open();
             }
@@ -512,7 +735,7 @@ namespace UserTool.ViewModel
                 rtwProxyProcessor = RtwProxyCreator.CreatProxy(adb, rtwLogHandledInterceptor);
             else if (IsComPortUsed)
                 rtwProxyProcessor = RtwProxyCreator.CreatProxy(comPort, rtwLogHandledInterceptor);
-            RtwCommand.SetRtwProxyProcessor(rtwProxyProcessor);
+            rtwCommand = new RtwCommand(rtwProxyProcessor);
         }
 
         public WifiViewModel()

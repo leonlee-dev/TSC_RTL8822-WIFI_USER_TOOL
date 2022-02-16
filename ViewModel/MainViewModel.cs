@@ -16,7 +16,7 @@ namespace UserTool.ViewModel
 {
     public class MainViewModel : ViewModelBase
     {
-        public string Version { get { return "RTK User Tool v1.00d"; } }
+        public string Version { get { return "RTK User Tool v1.02"; } }
     
         private ViewModelBase currentViewModel;
         public ViewModelBase CurrentViewModel

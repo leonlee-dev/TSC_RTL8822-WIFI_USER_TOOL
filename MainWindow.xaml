@@ -9,8 +9,7 @@
         xmlns:vm="clr-namespace:UserTool.ViewModel"
         mc:Ignorable="d"
         d:DataContext="{d:DesignInstance vm:MainViewModel,IsDesignTimeCreatable=True}"
-        Title="{Binding Version}" Height="455" Width="675"
-        d:DesignHeight="455" d:DesignWidth="675"
+        Title="{Binding Version}" Height="580" Width="675" d:DesignHeight="550" d:DesignWidth="675"
         Icon="wifi.ico" ResizeMode="NoResize" Loaded="Window_Loaded">
     <Window.Resources>
         <!--<DataTemplate DataType="{x:Type vm:WifiViewModel}">
@@ -25,6 +24,9 @@
             <RowDefinition Height="auto"/>
             <RowDefinition Height="auto"/>
         </Grid.RowDefinitions>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="auto"/>
+        </Grid.ColumnDefinitions>
         <Border Grid.Row="0" BorderBrush="LightBlue" Background="PowderBlue" BorderThickness="5,5,5,2.5">
             <Label Content="RTL8822" FontFamily="Calibri" FontSize="20" HorizontalContentAlignment="Center" VerticalContentAlignment="Center"/>
         </Border>

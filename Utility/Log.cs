@@ -54,5 +54,10 @@ namespace UserTool.Utility
             lock (sb)
                 File.WriteAllText(path, sb.ToString());
         }
+
+        public void AppendFile(string path, string content)
+        {
+            throw new NotImplementedException();
+        }
     }
 }
